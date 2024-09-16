@@ -1,0 +1,4 @@
+<!-- The .gitkeep file is a placeholder used to ensure that empty directories are tracked in a Git repository. Git doesn’t track empty directories by default, so if you want to include a folder in version control but it doesn’t yet contain any files, you can add a .gitkeep file inside that directory.
+
+Use Case:
+-> Keeping empty directories in the repository: Sometimes, a project may require specific folder structures to be maintained (e.g., logs/, uploads/), but those folders might not always contain files initially. Adding a .gitkeep file inside those folders ensures Git includes them when committing to the repository. -->
