@@ -23,7 +23,8 @@ const uploadOnCloudinary = async (localFilePath) => {
             }
         );
         // file has been uploaded successfully
-        console.log("File is uploaded on cloudinary", response.url);
+        // console.log("File is uploaded on cloudinary", response.url);
+        fs.unlinkSync(localFilePath)
         return response;
     } catch (error) {
         // fs.unlinkSync() is a method in Node.js used to synchronously delete a file from the file system. It is part of the fs (File System) module, which provides functions for interacting with the file system

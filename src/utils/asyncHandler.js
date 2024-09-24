@@ -2,13 +2,11 @@
 This function is used to simplify error handling for asynchronous request handlers in Express.js. Normally, you would need to manually handle try-catch blocks for errors in asynchronous code. With asyncHandler, you can just wrap the function and any errors will be automatically caught and passed to the error middleware.
 */
 const asyncHandler = (requestHandler) => {
-  (req, res, next) => {
   return (req, res, next) => {
-      Promise.resolve(requestHandler(req, res, next)).catch((err) => next(err))
+    Promise.resolve(requestHandler(req, res, next)).catch((err) => next(err));
   }
 }
-}
-export { asyncHandler }
+export { asyncHandler };
 
 // const asyncHandler = () => {}
 // const asyncHandler = (function) => { () =>{} };
