@@ -1,10 +1,11 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
-import { User } from '../models/user.model.js'
+import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
 /*
+Steps to register user
 const registerUser = asyncHandler( async ( req , res) => {
     // get user details from frontend
     // validation - for not empty
@@ -18,6 +19,25 @@ const registerUser = asyncHandler( async ( req , res) => {
 } )
 */
 
+const generateAccessAndRefreshToken = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    const accessToken = await user.generateAccessToken();
+    const refreshToken = await user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    return { accessToken, refreshToken };
+  } catch (error) {
+    throw new ApiError(
+      500,
+      "Something went wrong while generating refresh and access token"
+    );
+  }
+};
+
+// Register User
 // extracted all the data points like username etc from req.body
 const registerUser = asyncHandler(async (req, res) => {
   const { fullName, email, username, password } = req.body;
@@ -37,60 +57,151 @@ const registerUser = asyncHandler(async (req, res) => {
 
   // checking whether the user already exist using username or email id
   const existedUser = await User.findOne({
-    $or: [ {username} , {email} ]
-  })
+    $or: [{ username }, { email }],
+  });
 
-  if(existedUser){
-    throw new ApiError(409, "User email or username already exists")
+  if (existedUser) {
+    throw new ApiError(409, "User email or username already exists");
   }
   // console.log(req.files);
-  
 
   const avatarLocalPath = req.files?.avatar[0]?.path;
   // const coverImgLocalPath = req.files?.coverImage[0]?.path;
 
   let coverImgLocalPath;
-  if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
-    coverImgLocalPath = req.files.coverImage[0].path
+  if (
+    req.files &&
+    Array.isArray(req.files.coverImage) &&
+    req.files.coverImage.length > 0
+  ) {
+    coverImgLocalPath = req.files.coverImage[0].path;
   }
 
-  if(!avatarLocalPath){
-    throw new ApiError(400, 'Avatar file is Required!')
+  if (!avatarLocalPath) {
+    throw new ApiError(400, "Avatar file is Required!");
   }
 
-  const avatar = await uploadOnCloudinary(avatarLocalPath)
-  const coverImage = await uploadOnCloudinary(coverImgLocalPath)
-
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
+  const coverImage = await uploadOnCloudinary(coverImgLocalPath);
 
   // if avatar is not present throw an error or upload the avatar on cloudinary
-  if(!avatar){
-    throw new ApiError(400,'Avatar file required!')
+  if (!avatar) {
+    throw new ApiError(400, "Avatar file required!");
   }
 
-  // if everything is fine then we create an object User using .create 
+  // if everything is fine then we create an object User using .create
   const user = await User.create({
     fullName,
     avatar: avatar.url,
     coverImage: coverImage?.url || "",
     email,
     password,
-    username: username.toLowerCase()
-  })
+    username: username.toLowerCase(),
+  });
 
   // Here we're checking whether the user is created or not:
 
-  // by using select everything is selected by default but we want password and refreshToken not to be selected so we give a -ve sign to it 
+  // by using select everything is selected by default but we want password and refreshToken not to be selected so we give a -ve sign to it
   const createdUser = await User.findById(user._id).select(
     "-password -refreshToken"
-  )
-  if(!createdUser){
+  );
+  if (!createdUser) {
     throw new ApiError(500, "Something went wrong while registering the user");
   }
 
-  return res.status(201).json(
-    new ApiResponse(200, createdUser, "User registered successfully")
-  )
-
+  return res
+    .status(201)
+    .json(new ApiResponse(200, createdUser, "User registered successfully"));
 });
 
-export { registerUser };    
+/*
+  Login User:
+  Steps to login user:
+  req body -> data
+  check username or email
+  find user exists or not
+  check password if user found
+  if password is correct then generate access and refresh token and send it to the user through cookies!
+  */
+const loginUser = asyncHandler(async (req, res) => {
+  const { email, username, password } = req.body;
+
+  if (!username || !email) {
+    throw new ApiError(400, "Username or Email is required!!");
+  }
+
+  // Find the user using the username or email
+  const user = await User.findOne({
+    $or: [{ username }, { email }],
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
+
+  const isPassowordValid = await user.isPassowrdCorrect(password);
+
+  if (!isPassowordValid) {
+    throw new ApiError(401, "Password Incorrect");
+  }
+
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
+
+  const loggedInUser = await User.findById(user._id).select(
+    " -password -refreshToken"
+  );
+
+  // When httpOnly and secure is set to true, the cookie can only be modified from the server and not from the frontend
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken,
+        },
+        "User logged In Successfully"
+      )
+    );
+});
+
+const logoutUser = asyncHandler(async (req, res) => {
+  // to logout a user firstly we have to clear out their cookies and clear out the refreshToken
+  // findByIdAndUpdate method is searching the user based on id and the set operator is updating the field i.e refreshToken is cleared out
+  // The option { new: true } ensures that the function returns the updated user with the refreshToken set to undefined rather than the old document before the update.
+  User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        refreshToken: undefined,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "User logged out successfully!"));
+});
+
+export { registerUser, loginUser, logoutUser };
