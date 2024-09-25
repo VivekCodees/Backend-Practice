@@ -5,10 +5,9 @@ import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
 
-
 // sometimes in production grade code, req and next is often used but res is rarely used so we can give an underscore instead of writing res
-// export const verifyJWT = asyncHandler(async (req, res, next) => {
-export const verifyJWT = asyncHandler(async (req, _, next) => {
+// export const verifyJWT = asyncHandler(async (req, _, next) => {
+export const verifyJWT = asyncHandler(async (req, res, next) => {
   try {
     const token =
       req.cookies?.accessToken ||
@@ -21,7 +20,7 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
     const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
     const user = await User.findById(decodedToken?._id).select(
-      " -password -refreshToken "
+      " -password -refreshToken"
     );
 
     if (!user) {
@@ -31,7 +30,9 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
     req.user = user;
 
     next();
+    
   } catch (error) {
     throw new ApiError(401, error?.message || "Invalid Access Token");
   }
 });
+
